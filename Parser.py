@@ -5,6 +5,7 @@ import sys
 import string
 
 ESCAPE = {'\\':'\\','\'': '\'','\"':'\"','a':'\a','b':'\b','n':'\n','v':'\v','t':'\t','r':'\r','f':'\f'}
+ESCAPE_CHAR = ['\\','\'','\"','a','b','n','v','t','r','f']
 HEX = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','A','B','C','D','E','F']
 OCTAL = ['0','1','2','3','4','5','6','7']
 
@@ -61,11 +62,12 @@ class PyMacroParser:
         self._trans_dict.clear()
         for k in self._raw_dict.keys():
             if self._raw_dict[k] != None:
-                try:
-                    self._trans_dict[k] = self.cpp_to_py(self._raw_dict[k])
-                except Exception:
-                    print self._raw_dict[k]
-                    raise Exception
+                self._trans_dict[k] = self.cpp_to_py(self._raw_dict[k])
+                # try:
+                #     self._trans_dict[k] = self.cpp_to_py(self._raw_dict[k])
+                # except Exception:
+                #     print self._raw_dict[k]
+                #     raise Exception
             else:
                 self._trans_dict[k] = None
         print self._trans_dict
@@ -123,17 +125,18 @@ class PyMacroParser:
 
     def py_to_cpp(self, cpp, py):
         value = ''
-        # int, float, char
-        if type(py) is int or type(py) is float:
+        # int, long, float, char
+        t = type(py)
+        if t is int or t is float or t is long:
             value = str(py)
         # structure
-        elif type(py) is tuple:
+        elif t is tuple:
             value = self.tuple_to_structure(cpp, py)
         # bool
-        elif type(py) is bool:
+        elif t is bool:
             value = str(py).lower()
         # string or long string
-        elif type(py) is unicode or type(py) is str:
+        elif t is unicode or t is str:
             value = cpp
         return value
 
@@ -154,9 +157,16 @@ class PyMacroParser:
             m = self.replace_tabs(m)
             m = m.strip()
             m = m[1:].strip()
-            for word in m.split(' ', 2):
-                if word != '':
-                    temp.append(word.strip())
+            # get define clause
+            list = m.split(' ', 1)
+            temp.append(list[0])
+            # get variable
+            if temp[0] != 'endif' and temp[0] != 'else':
+                list = list[1].strip().split(' ', 1)
+                temp.append(list[0].strip())
+                # get value if exists
+                if len(list) == 2:
+                    temp.append(list[1].strip())
             macro_split.append(temp)
         # filter valid macro out from if-else clause
         for m in macro_split:
@@ -181,7 +191,8 @@ class PyMacroParser:
             elif m[0] == 'else':
                 stack[-1] = not stack[-1]
             elif m[0] == 'endif':
-                stack.pop()
+                if len(stack) != 1:
+                    stack.pop()
             # store untranslated value in dictionary
             elif m[0] == 'define':
                 if len(m) >= 3:
@@ -241,14 +252,22 @@ class PyMacroParser:
             value = ''
             s = s[1:-1]
             i = 0
+            status = 0
             while(i < len(s)):
                 # escape characters
                 if s[i] == '\\' and i < len(s) - 1 and s[i+1] in ESCAPE.keys():
                     value += ESCAPE[s[i+1]]
                     i += 1
-                else:
+                # data needs concat
+                elif status == 0 and s[i] == '\"':
+                    status = 1
+                # exit concat mode
+                elif status == 1 and s[i] == '\"':
+                    status = 0
+                elif status == 0:
                     value += s[i]
                 i += 1
+
         # long string
         elif s[0] == 'L':
             value = ''
@@ -266,7 +285,25 @@ class PyMacroParser:
         # char
         elif s[0] == '\'' and s[-1] == '\'':
             s = s[1:-1]
-            value = ord(s)
+            if len(s) > 3:
+                if s[-4] == '\\':
+                    if s[-3] == 'x':
+                        if s[-1] in HEX and s[-2] in HEX:
+                            value = int('0' + s[-3:], 16)
+                    elif s[-3] in OCTAL and s[-2] in OCTAL and s[-1] in OCTAL:
+                        value = int(s[-3:], 8)
+            elif len(s) == 3:
+                if s[0] == '\\':
+                    if s[1] in OCTAL and s[2] in OCTAL:
+                        value = int(s[1:], 8)
+            elif len(s) == 2:
+                if s[0] == '\\':
+                    if s[1] in OCTAL:
+                        value = int(s[1], 8)
+                    elif s[1] in ESCAPE.keys():
+                        value = ord(ESCAPE[s[1]])
+            else:
+                value = ord(s)
         # structure
         elif s[0] == '{' and s[-1] == '}':
             value = self.make_tuple(s)
@@ -288,8 +325,6 @@ class PyMacroParser:
         """
         sign = 1
         status = 0
-        while s[-1].isalpha():
-            s = s[:-1]
         # deal with sign
         if s[0] == '+':
             s = s[1:]
@@ -304,6 +339,8 @@ class PyMacroParser:
             status = 2
         # float
         else:
+            while s[-1].isalpha():
+                s = s[:-1]
             for d in s:
                 if not d.isdigit():
                     status = 3
@@ -320,12 +357,16 @@ class PyMacroParser:
         """
         # hex
         if status == 1:
+            if s[-1] not in HEX:
+                s = s[:-1]
             value = int(s, 16) * sign
-        #
+        # octal
         elif status == 2:
             value = int(s, 8) * sign
+        # float
         elif status == 3:
             value = float(s) * sign
+        # int
         elif status == 0:
             value = int(s) * sign
         return value
@@ -353,20 +394,35 @@ class PyMacroParser:
         :return: [string], each string is one element of cpp structure
         """
         stack = []
+        prev = ''
         s = s[1:-1]
+        s = s.strip()
+        if s[-1] == ',':
+            s = s[:-1]
         elements = []
         split_point = [0]
         i = 0
         # get index of split point
         while i < len(s):
-            if s[i] == '{':
-                stack.append('{')
-            elif s[i] == '}':
-                stack.pop()
-            elif len(stack) == 0 and s[i] == ',':
-                split_point.append(i)
+            if stack == []:
+                if s[i] == ',':
+                    split_point.append(i)
+                elif s[i] == '{' or s[i] == '\'' or s[i] == '\"':
+                    stack.append(s[i])
+            else:
+                # in string
+                if stack[-1] == '\'' or stack[-1] == '\"':
+                    if prev != '\\' and s[i] == stack[-1]:
+                        stack.pop()
+                # in sub structure
+                elif stack[-1] == '{':
+                    if s[i] == '{' or s[i] == '\'' or stack[-1] == '\"':
+                        stack.append(s[i])
+                    elif s[i] == '}':
+                        stack.pop()
+            prev = s[i]
             i += 1
-        # split string of structure according to split point
+
         if len(split_point) == 1:
             elements.append(s.strip())
         else:
@@ -387,90 +443,80 @@ class PyMacroParser:
         return self.filter_comment(file)
 
     def filter_comment(self, file):
-        file_content = []
-        # filter multi-line comment
         status = 0
-        ml_status = 0
+        file_content = []
         for line in file:
-            # ignore empty line
-            if len(line) == 0:
-                continue
-
-            line = line.strip()
-
-            stack = []
-            temp = ''
+            after_filter = ''
             for c in line:
-                # not in string
-                if ml_status == 0:
-                    if len(stack) == 0:
-                        if c == '\'' or c == '\"':
-                            stack.append(c)
-                        if c == '/':
-                            ml_status = 1
-                    temp += c
-                if ml_status == 1:
-                    if 
-                # in string
-                elif c == stack[-1]:
-                    stack.pop()
-
-
-            start = line.find('/*')
-            end = line.find('*/')
-
-            # if this line is in a multi-line comment   (/*..\n ...\n ...*\)
-            if status == 1 and end < 0:
-                continue
-
-            while(start >= 0 or end >= 0):
-                # if comment starts and ends in the same line   (/* ... */)
-                if status == 0 and start >=0 and end > start:
-                    line = line[:start] + line[end+2:]
-
-                # if comment starts this line but ends in another line  (/* ... )
-                if status == 0 and start >=0 and end < 0:
-                    line = line[:start]
-                    status = 1
-                    break
-
-                # if comment starts in another line but ends in this line   (...*/...)
-                if status == 1 and end >= 0:
-                    line = line[end+2:]
-                    status = 0
-
-                start = line.find('/*')
-                end = line.find('*/')
-
-            # deal with single line comment
-            stack = []
-            sl_status = 0
-            i = 0
-            for c in line:
-                # not in string
-                if len(stack) == 0:
-                    if c == '\'' or c == '\"':
-                        stack.append(c)
-                    if sl_status == 0 and c == '/':
-                        sl_status = 1
-                    elif sl_status == 1 and c == '/':
-                        line = line[:i-1]
+                if status == 0:
+                    if c == '/':
+                        status = 1
+                    elif c == '\'':
+                        status = 4
+                    elif c == '\"':
+                        status = 5
+                    after_filter += c
+                    continue
+                if status == 1:
+                    # in single line comment
+                    if c == '/':
+                        after_filter = after_filter[:-1]
+                        status = 0
                         break
+                    # in multi line comment
+                    elif c == '*':
+                        after_filter = after_filter[:-1]
+                        status = 2
                     else:
-                        sl_status = 0
+                        after_filter += c
+                        status = 0
+                    continue
+                # in multi line comment
+                if status == 2:
+                    if c == '*':
+                        status = 3
+                    continue
+                # ready end multi line comment
+                if status == 3:
+                    # end multi line comment
+                    if c == '/':
+                        after_filter += ' '
+                        status = 0
+                    elif c == '*':
+                        continue
+                    # restart multi line comment
+                    else:
+                        status = 2
+                    continue
                 # in string
-                elif c == stack[-1]:
-                    stack.pop()
-                i += 1
-
-            # start = line.find('//')
-            # if start >= 0:
-            #     line = line[:start]
-            # # ignore empty line
-            line = line.strip()
-            if line == "\n" or len(line) == 0:
-                continue
-            file_content.append(line)
+                if status == 4:
+                    if c == '\\':
+                        status = 6
+                    if c == '\'':
+                        status = 0
+                    after_filter += c
+                    continue
+                if status == 5:
+                    if c == '\\':
+                        status = 7
+                    if c == '\"':
+                        status = 0
+                    after_filter += c
+                    continue
+                # ready escape
+                if status == 6:
+                    after_filter += c
+                    status = 4
+                if status == 7:
+                    after_filter += c
+                    status = 5
+            after_filter = after_filter.strip()
+            if after_filter != '':
+                if after_filter[0] != '#':
+                    last = file_content[-1]
+                    file_content[-1] = file_content[-1] + ' ' + after_filter
+                else:
+                    file_content.append(after_filter)
         return file_content
 
 if __name__ == '__main__':
@@ -485,5 +531,8 @@ if __name__ == '__main__':
     # a1.dumpDict()
     # a1.dump("c.cpp")
     a = PyMacroParser()
-    a.load('b.cpp')
+    a.load('c.cpp')
+    a.dumpDict()
+    a.dump('d.cpp')
+    a.load('d.cpp')
     a.dumpDict()

@@ -639,5 +639,5 @@ class PyMacroParser():
 if __name__ == '__main__':
     a1 = PyMacroParser()
     a2 = PyMacroParser()
-    a1.load("b.cpp")
+    a1.load("c.cpp")
     a1.dumpDict()

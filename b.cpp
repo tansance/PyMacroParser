@@ -7,7 +7,7 @@
 #define CHAR_A '"'
 # define comment/*Is a
 comment!
-    #define SHIT_NO_MACRO_PLEASE
+	#define SHIT_NO_MACRO_PLEASE
 #define DEF "unused define"
 */"//Not a comment!"
 #define b /* 2121*/ "adsa"
@@ -38,7 +38,7 @@ dasdsad*/"Not a commemt!"
 #define CHARDATA  {'a', {'b'}, 23}
 #define STRDATA  {"god", "(hi),{how are [you]?}", ",", {"inner_{1}",{"inner_{2}", "inner_{2}_(1)"}}}
 
- /*test*/ #define /*middle_1***/ COMSTRUCT /*middle_2*/ { {1, 2.0, "str"}, {'1', .0075e1f,  /*test*/ "\\\\\\\\\\\\\\\\\\//////////////////"},   /*test*/ { +0x1dCbAF, 1.2E+0,  /*""*/ "\v\'\"\f \"\n\r\t\b\a\\",},}  /*enddd*/ //end
+/*test*/ #define /*middle_1***/ COMSTRUCT /*middle_2*/ { {1, 2.0, "str"}, {'1', .0075e1f,  /*test*/ "\\\\\\\\\\\\\\\\\\//////////////////"},   /*test*/ { +0x1dCbAF, 1.2E+0,  /*""*/ "\v\'\"\f \"\n\r\t\b\a\\",},}  /*enddd*/ //end
 
 #define special "'1~!@#$^&*()_+-={':[,]}|;.</>?"
 
