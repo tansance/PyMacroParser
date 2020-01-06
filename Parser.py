@@ -13,7 +13,6 @@ class PyMacroParser:
     def __init__(self):
         self._raw_dict = {} # valid macro with value untranslated
         self._trans_dict = {} # valid macro with value translated
-        self._py_to_cpp = {}
         self._raw_macro = [] # original file content
         self._filtered_macro = [] # macro added pre define macro, filtered comment
 
@@ -58,16 +57,10 @@ class PyMacroParser:
         store in self._trans_dict and return
         :return: dictionary
         """
-        self._py_to_cpp.clear()
         self._trans_dict.clear()
         for k in self._raw_dict.keys():
             if self._raw_dict[k] != None:
                 self._trans_dict[k] = self.cpp_to_py(self._raw_dict[k])
-                # try:
-                #     self._trans_dict[k] = self.cpp_to_py(self._raw_dict[k])
-                # except Exception:
-                #     print self._raw_dict[k]
-                #     raise Exception
             else:
                 self._trans_dict[k] = None
         print self._trans_dict
@@ -92,27 +85,15 @@ class PyMacroParser:
             else:
                 value = self.py_to_cpp(self._raw_dict[key], self._trans_dict[key])
                 output_file.write('#define ' + key + ' ' + value + '\n')
-            # # deal with long string macro
-            # elif type(self._trans_dict[key]) is list:
-            #     output_file.write('#define ' + key + ' ')
-            #     for v in self._trans_dict[key]:
-            #         output_file.write(v+' ')
-            #     output_file.write('\n')
-            # # deal with tuple
-            # elif type(self._trans_dict[key]) is tuple:
-            #     output_file.write('#define ' + key + ' ' + self.tuple_to_structure(self._raw_dict[key], self._trans_dict[key]) + '\n')
-            # # deal with long string
-            # elif self._raw_dict[key] != None and self._raw_dict[key][0] == 'L':
-            #     output_file.write('#define ' + key + ' ' + self._raw_dict[key] + '\n')
-            # # deal with string:
-            # elif type(self._trans_dict[key]) is str:
-            #     output_file.write('#define ' + key + ' \"' + self._trans_dict[key] + '\"\n')
-            # # deal with regular macro
-            # else:
-            #     output_file.write('#define ' + str(key) + ' ' + str(self._trans_dict[key]) + '\n')
         output_file.close()
 
     def tuple_to_structure(self, struct, tup):
+        """
+        convert tuple to cpp structure
+        :param struct: string, original cpp structure
+        :param tup: tuple, python tuple
+        :return: string, structure converted from python tuple
+        """
         origin = self.split_cpp_struct(struct)
         value = '{'
         i = 0
@@ -124,6 +105,12 @@ class PyMacroParser:
         return value
 
     def py_to_cpp(self, cpp, py):
+        """
+        convert python types back to cpp type
+        :param cpp: string, original cpp type
+        :param py: python types,
+        :return: string, cpp types converted from python types
+        """
         value = ''
         # int, long, float, char
         t = type(py)
@@ -208,6 +195,11 @@ class PyMacroParser:
                 del self._raw_dict[m[1]]
 
     def replace_tabs(self, s):
+        """
+        replace tabs with signle space
+        :param s: string, cpp code
+        :return: string, replaced cpp code
+        """
         stack = []
         intabs = -1
         i = 0
@@ -518,21 +510,3 @@ class PyMacroParser:
                 else:
                     file_content.append(after_filter)
         return file_content
-
-if __name__ == '__main__':
-    # a1 = PyMacroParser()
-    # a2 = PyMacroParser()
-    # a1.load("a.cpp")
-    # filename = "b.cpp"
-    # a1.dump(filename)  # 没有预定义宏的情况下，dump cpp
-    # a2.load(filename)
-    # a2.dumpDict()
-    # a1.preDefine("MC1;MC2")  # 指定预定义宏，再dump
-    # a1.dumpDict()
-    # a1.dump("c.cpp")
-    a = PyMacroParser()
-    a.load('c.cpp')
-    a.dumpDict()
-    a.dump('d.cpp')
-    a.load('d.cpp')
-    a.dumpDict()
